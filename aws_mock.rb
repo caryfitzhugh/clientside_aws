@@ -1,10 +1,24 @@
+ENV["RACK_ENV"] ||= ENV['RAILS_ENV']
+
 AWS::Core::Configuration.module_eval do
-  port = ENV['RACK_ENV'] == 'test' ? "4567" : "4568"
-  add_service "DynamoDB", "dynamo_db", "localhost:#{port}/dynamodb"
-  add_service 'SQS', 'sqs', "localhost:#{port}/sqs"
-  add_service 'S3', 's3', "localhost:#{port}/s3"
-  add_service 'ElasticTranscoder', 'elastic_transcoder', "localhost:#{port}/elastic_transcoder"
-  add_service 'SimpleEmailService', 'simple_email_service', "localhost:#{port}/ses"
+  host = nil
+  port = nil
+  env = ENV["RACK_ENV"]
+
+  if ( env == 'test' ||
+       env == 'cucumber')
+    host = "aws.localhost"
+    port = 80
+  else
+    host = "localhost"
+    port = 4568
+  end
+
+  add_service "DynamoDB", "dynamo_db", "#{host}:#{port}/dynamodb"
+  add_service 'SQS', 'sqs', "#{host}:#{port}/sqs"
+  add_service 'S3', 's3', "#{host}:#{port}/s3"
+  add_service 'ElasticTranscoder', 'elastic_transcoder', "#{host}:#{port}/elastic_transcoder"
+  add_service 'SimpleEmailService', 'simple_email_service', "#{host}:#{port}/ses"
 end
 
 
@@ -18,11 +32,11 @@ module AWS
       else
         require 'httparty'
       end
-      
+
       def app
         Sinatra::Application
       end
-      
+
       private
       def make_sync_request response
 
@@ -31,21 +45,21 @@ module AWS
           response.http_request.headers.each do |k,v|
             headers[k] = v
           end
-        
+
           if not headers['content-length'].nil?
             headers['content-length'] = headers['content-length'].to_s
-          else 
+          else
             headers['content-length'] = "0"
           end
-        
+
           params = Hash.new
           response.http_request.params.each do |p|
             params[p.name] = p.value
           end
-        
+
           path = response.http_request.path
           body = response.http_request.body
-        
+
           mock_response = nil
           if response.http_request.http_method == "POST"
             if ENV['RACK_ENV'] == 'test'
@@ -55,17 +69,17 @@ module AWS
             else
               mock_response = HTTParty::post("http://#{response.http_request.host}#{path}", :headers => headers, :body => body)
             end
-          elsif response.http_request.http_method == "GET"   
+          elsif response.http_request.http_method == "GET"
             if ENV['RACK_ENV'] == 'test'
               new_path = URI.parse("http://#{response.http_request.host}#{path}").path
               get new_path, params, headers.merge('SERVER_NAME' => response.http_request.host)
               mock_response = last_response
             else
-              mock_response = HTTParty::get("http://#{response.http_request.host}#{path}", :headers => headers, :query => params)    
+              mock_response = HTTParty::get("http://#{response.http_request.host}#{path}", :headers => headers, :query => params)
             end
-          elsif response.http_request.http_method == "HEAD"  
+          elsif response.http_request.http_method == "HEAD"
             #NOTE: a head request via AWS breaks the specifications when there is an error
-            #      We need to send a GET request instead of head in case there is an XML 
+            #      We need to send a GET request instead of head in case there is an XML
             #      body attached to the response
             params['head_request'] = 1
             if ENV['RACK_ENV'] == 'test'
@@ -74,7 +88,7 @@ module AWS
               mock_response = last_response
             else
               mock_response = HTTParty::get("http://#{response.http_request.host}#{path}", :headers => headers, :query => params)
-            end  
+            end
           elsif response.http_request.http_method == "DELETE"
             if ENV['RACK_ENV'] == 'test'
               new_path = URI.parse("http://#{response.http_request.host}#{path}").path
@@ -121,14 +135,14 @@ module AWS
           end
         end
       end
-      
+
       def build_request(name, options, &block)
         # we dont want to pass the async option to the configure block
         opts = options.dup
         opts.delete(:async)
-        
+
         http_request = new_request
-        
+
         # configure the http request
         http_request.host = endpoint
         http_request.proxy_uri = config.proxy_uri
@@ -136,14 +150,14 @@ module AWS
         http_request.ssl_verify_peer = config.ssl_verify_peer?
         http_request.ssl_ca_file = config.ssl_ca_file if config.ssl_ca_file
         http_request.ssl_ca_path = config.ssl_ca_path if config.ssl_ca_path
-        
+
         send("configure_#{name}_request", http_request, opts, &block)
         http_request.headers["user-agent"] = user_agent_string
-        
+
         unless http_request.host.match(/localhost/)
-          http_request.add_authorization!(signer)        
+          http_request.add_authorization!(signer)
         end
-        
+
         http_request
       end
     end

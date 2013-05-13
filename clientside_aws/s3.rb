@@ -1,7 +1,7 @@
 helpers do
   def list_buckets
     buckets = AWS_REDIS.keys "s3:bucket:*"
-    
+
     xml = Builder::XmlMarkup.new()
     xml.instruct!
     xml.ListAllMyBucketsResult(:xmlns => "http://doc.s3.amazonaws.com/2006-03-01") do
@@ -18,13 +18,13 @@ helpers do
         end
       end
     end
-        
+
     content_type :xml
     xml.target!
   end
-  
+
   def list_objects(bucket)
-    
+
     xml = Builder::XmlMarkup.new()
     xml.instruct!
     xml.ListAllMyBucketsResult(:xmlns => "http://doc.s3.amazonaws.com/2006-03-01") do
@@ -33,16 +33,16 @@ helpers do
       xml.tag!(:Marker, nil)
       xml.tag!(:MaxKeys, 1000)
       xml.tag!(:IsTruncated, false)
-      
+
       objects = AWS_REDIS.keys "s3:bucket:#{bucket}:*"
       objects.each do |object|
         xml.Contents do
-          
+
           key = AWS_REDIS.hget object,  "key"
           last_modified = AWS_REDIS.hget object, "last_modified"
           etag = AWS_REDIS.hget object, "etag"
           size = AWS_REDIS.hget object, "size"
-          
+
           xml.tag!(:Key, key)
           xml.tag!(:LastModified, Time.at(last_modified.to_i).xmlschema)
           xml.tag!(:ETag, etag)
@@ -58,7 +58,7 @@ helpers do
     content_type :xml
     xml.target!
   end
-  
+
   def objectNotFound
     xml = Builder::XmlMarkup.new()
     xml.instruct!
@@ -75,10 +75,10 @@ helpers do
     obj_key = "s3:bucket:#{bucket}:#{obj_name}"
     return AWS_REDIS.hget obj_key, 'body'
   end
-    
-end 
 
-get "/s3/" do 
+end
+
+get "/s3/" do
   if env['SERVER_NAME'].match(/\./)
     bucket = env['SERVER_NAME'].split(".").first
     list_objects(bucket)
@@ -91,17 +91,17 @@ end
 get "/s3/*" do
   bucket = nil
   file = nil
-  
+
   # handle S3 downloading from the 'servers'
   if params[:splat].first.match(/\//)
     bucket, file = params[:splat].first.split(/\//)
   elsif env['SERVER_NAME'].match(/\./)
-    bucket = env['SERVER_NAME'].split(".").first     
+    bucket = env['SERVER_NAME'].split(".").first
     file = params[:splat].first
   else
     halt 404, "unknown bucket"
   end
-   
+
   halt 404, objectNotFound if AWS_REDIS.hget("s3:bucket:#{bucket}:#{file}", "body").nil?
 
   body = downloadFile(bucket, file)
@@ -114,7 +114,7 @@ get "/s3/*" do
   status 200
 end
 
-delete "/s3/*" do 
+delete "/s3/*" do
   # delete the given key
   if env['SERVER_NAME'].match(/\./)
     bucket = env['SERVER_NAME'].split(".").first
@@ -131,7 +131,9 @@ put "/s3/" do
   status 200
 end
 
-put "/s3/:file" do 
+put "/s3/*" do
+  params[:file] = params[:splat].first
+
   # upload the file (chunking not implemented) to fake S3
   if params[:file]
     body_send = nil
@@ -139,7 +141,7 @@ put "/s3/:file" do
     bucket = env['SERVER_NAME'].split(".").first
     if ENV['RACK_ENV'] == 'development'
       body_send = request.body.read
-    else 
+    else
       body_send = params[:body]
     end
     AWS_REDIS.hset "s3:bucket:#{bucket}:#{file_location}", "body", body_send
@@ -151,7 +153,3 @@ put "/s3/:file" do
   end
   status 200
 end
-
-
-
-

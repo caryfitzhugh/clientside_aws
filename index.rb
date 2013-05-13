@@ -1,5 +1,7 @@
 $LOAD_PATH << "#{File.dirname(__FILE__)}/"
 
+ENV['RACK_ENV'] ||= ENV["RAILS_ENV"]
+
 require 'rubygems'
 require 'sinatra'
 require 'sinatra/reloader' if development?
